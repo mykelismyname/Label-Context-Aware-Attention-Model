@@ -7,7 +7,7 @@ import torch
 import torch.utils.data as data_utils
 import label_word_attention_model as lwan
 
-def train(lwan_model, abs_encoder_model, san_model, train_loader, test_loader, criterion, opt, sent_pool='sum', epochs = 5, GPU=True):
+def train(lwan_model, abs_encoder_model, san_model, train_loader, test_loader, criterion, opt, sent_pool='mean', epochs = 5, GPU=True):
     if GPU:
         lwan_model.cuda()
         abs_encoder_model.cuda()
@@ -20,71 +20,53 @@ def train(lwan_model, abs_encoder_model, san_model, train_loader, test_loader, c
         for batch_idx, train in enumerate(tqdm(train_loader)):
             sentences = torch.empty(0).cuda()
             labels = train[2]
-            batch_loss = []
+            combined_loss = []
             for sent,tags,label in zip(train[0], train[1], labels):
                 opt.zero_grad()
-                # obtain the abstract representation print('sent', sent.size())
-                label = label.expand(1, label.size(0))
-                abstract_encoded = abs_encoder_model(sent.cuda())
-                sentence = torch.empty(0).cuda()
-                token_seq_loss = torch.empty(0).cuda()
-                print(sent)
-                break
-            break
-        #         # print(sent.shape, tags.shape)
-        #         for token,tag in zip(sent, tags):
-        #             x, y = token.cuda(), tag.cuda()
-        #             x, y_ = x.expand(1), y.expand(1)
-        #             tok, y_pred= lwan_model(x)
-        #             tok = torch.sum(tok, 1)
-        #             y_ = oneHotEncoder(y_).cuda()
-        #             seq_loss = criterion(y_pred, y_)
-        #             token_seq_loss = torch.cat((token_seq_loss, seq_loss.unsqueeze(0)))
-        #             sentence = torch.cat((sentence, tok), dim=0)
-        #
-        #         #aggregating token encodings to obtain a sentence vector
-        #         if sent_pool == 'mean':
-        #             sentence = torch.mean(sentence, dim=0)
-        #         elif sent_pool == 'max':
-        #             sentence = torch.max(sentence, dim=0)
-        #         else:
-        #             sentence = torch.sum(sentence, dim=0)
-        #
-        #         print(sentence.shape)
-        #         sentence_pred = san_model(sentence)
-        #         sent_loss = criterion(sentence_pred, label.cuda().float())
-        #         loss = torch.mean(token_seq_loss) + sent_loss
-        #         loss.backward()
-        #         print('token loss: {} and sent loss {}'.format(seq_loss, sent_loss))
-        #         opt.step()
-        #         batch_loss.append(float(loss))
-        #         sentences = torch.cat((sentences, sentence_pred), dim=0)
-        #
-        #     print(labels.shape, sentence.shape)
-        #     train_loss.append(np.mean(batch_loss))
-        #     sentences = sentences.detach().cpu()
-        #     labels = labels.cpu().float()
-        #     prec = precision_k(labels.numpy(), sentences.numpy(), 5)
-        #     prec_k.append(prec)
-        #     ndcg = Ndcg_k(labels.numpy(), sentences.numpy(), 5)
-        #     ndcg_k.append(ndcg)
-        #
-        # avg_loss = np.mean(train_loss)
-        # epoch_prec = np.array(prec_k).mean(axis=0)
-        # epoch_ndcg = np.array(ndcg_k).mean(axis=0)
-        # print("epoch {} train end : avg_loss = {:.4f}".format(i+1, avg_loss))
-        # print(epoch_prec, epoch_prec, epoch_prec)
-        # print("precision@1 : {:.4f} , precision@3 : {:.4f} , precision@5 : {:.4f} ".format(epoch_prec[0], epoch_prec[2], epoch_prec[4]))
-        # print("ndcg@1 : {:.4f} , ndcg@3 : {:.4f} , ndcg@5 : {:.4f} ".format(epoch_ndcg[0], epoch_ndcg[2], epoch_ndcg[4]))
-        #
-        # # eva;uation
-        # avg_test_loss, test_prec, test_ndcg = evaluate(test_loader=test_loader, lwan_model=lwan_model, san_model=san_model, sent_pool=sent_pool)
-        # print("epoch {} test end : avg_loss = {:.4f}".format(i + 1, avg_test_loss))
-        # print("precision@1 : {:.4f} , precision@3 : {:.4f} , precision@5 : {:.4f} ".format(test_prec[0], test_prec[2], test_prec[4]))
-        # print("ndcg@1 : {:.4f} , ndcg@3 : {:.4f} , ndcg@5 : {:.4f} ".format(test_ndcg[0], test_ndcg[2], test_ndcg[4]))
+                tags = tags.expand(1, tags.shape[0])
+                tags = tags.transpose(1, 0)
+                sent = sent.expand(1, sent.shape[0])
+                sent = sent.transpose(1, 0).cuda()
+                abstract_encoded = abs_encoder_model(sent)
+                tokens, y_pred = lwan_model(sent, abstract_encoded, abstract_encoder=True)
+                tags = oneHotEncoder(tags, 22)
+                seq_loss = criterion(y_pred, tags.cuda().float())
+
+                #sentence level
+                sentence = torch.sum(tokens, dim=1)
+                sentence_pred = san_model(sentence, sent_pool, abstract_encoded, abstract_encoder=True)
+                sentences = torch.cat((sentences, sentence_pred), dim=0)
+                label = label.expand(1, label.shape[0])
+                #print(sentence_pred, label)
+                sent_loss = criterion(sentence_pred, label.cuda().float())
+                loss = seq_loss + sent_loss
+                loss.backward()
+                opt.step()
+                combined_loss.append(float(loss))
+
+            labels_cpu = labels.data.cpu().float()
+            pred_cpu = sentences.data.cpu()
+            prec = precision_k(labels_cpu.numpy(), pred_cpu.numpy(), 5)
+            prec_k.append(prec)
+            ndcg = Ndcg_k(labels_cpu.numpy(), pred_cpu.numpy(), 5)
+            ndcg_k.append(ndcg)
+            loss_ = np.mean(combined_loss)
+            #print(loss_)
+            train_loss.append(loss_)
+
+        avg_loss = np.mean(train_loss)
+        epoch_prec = np.array(prec_k).mean(axis=0)
+        epoch_ndcg = np.array(ndcg_k).mean(axis=0)
+        print("epoch %2d train end : avg_loss = %.4f" % (i + 1, avg_loss))
+        print("precision@1 : %.4f , precision@3 : %.4f , precision@5 : %.4f " % (
+        epoch_prec[0], epoch_prec[2], epoch_prec[4]))
+        print("ndcg@1 : %.4f , ndcg@3 : %.4f , ndcg@5 : %.4f " % (epoch_ndcg[0], epoch_ndcg[2], epoch_ndcg[4]))
+
+        # eva;uation
+        evaluate(epoch=i+1, test_loader=test_loader, lwan_model=lwan_model, san_model=san_model, sent_pool=sent_pool)
 
 
-def evaluate(test_loader, lwan_model, san_model, sent_pool):
+def evaluate(epoch, test_loader, lwan_model, san_model, sent_pool):
     prec_k = []
     ndcg_k = []
     test_loss = []
@@ -93,57 +75,47 @@ def evaluate(test_loader, lwan_model, san_model, sent_pool):
         labels = test[2]
         batch_loss = []
         for sent,tags,label in zip(test[0], test[1], test[2]):
-            # obtain the abstract representation print('sent', sent.size())
-            label = label.expand(1, label.size(0))
-            abstract_encoded = abs_encoder_model(sent.cuda())
-            sentence = torch.empty(0).cuda()
-            test_token_seq_loss = []
-            for token,tag in zip(sent, tags):
-                x, y = token.cuda(), tag.cuda()
-                x, y_ = x.expand(1), y.expand(1)
-                tok, y_pred = lwan_model(x)
-                tok = torch.sum(tok, 1)
-                y_ = oneHotEncoder(y_).cuda()
-                seq_loss = criterion(y_pred, y_)
-                test_token_seq_loss.append(float(seq_loss))
-                sentence = torch.cat((sentence, tok), dim=0)
+            tags = tags.expand(1, tags.shape[0])
+            tags = tags.transpose(1, 0)
+            sent = sent.expand(1, sent.shape[0])
+            sent = sent.transpose(1, 0).cuda()
+            abstract_encoded = abs_encoder_model(sent)
+            tokens, y_pred = lwan_model(sent, abstract_encoded, abstract_encoder=True)
+            tags = oneHotEncoder(tags, 22)
+            seq_loss = criterion(y_pred, tags.cuda().float())
 
-            # aggregating token encodings to obtain a sentence vector
-            if sent_pool == 'mean':
-                sentence = torch.mean(sentence, dim=0)
-            elif sent_pool == 'max':
-                sentence = torch.max(sentence, dim=0)
-            else:
-                sentence = torch.sum(sentence, dim=0)
-
-            sentence_pred = san_model(sentence)
-            sent_loss = criterion(sentence_pred, label.cuda().float())
-            loss = np.mean(test_token_seq_loss) + float(sent_loss)
-            batch_loss.append(loss)
+            # sentence level
+            sentence = torch.sum(tokens, dim=1)
+            sentence_pred = san_model(sentence, sent_pool, abstract_encoded, abstract_encoder=True)
             sentences = torch.cat((sentences, sentence_pred), dim=0)
+            label = label.expand(1, label.shape[0])
+            # print(sentence_pred, label)
+            sent_loss = criterion(sentence_pred, label.cuda().float())
+            loss = seq_loss + sent_loss
+            batch_loss.append(float(loss))
 
         test_loss.append(np.mean(batch_loss))
-        sentences = sentences.detach().cpu()
-        labels = labels.cpu().float()
-        prec = precision_k(labels.numpy(), sentences.numpy(), 5)
+        labels_cpu = labels.data.cpu().float()
+        pred_cpu = sentences.data.cpu()
+        prec = precision_k(labels.numpy(), pred_cpu.numpy(), 5)
         prec_k.append(prec)
-        ndcg = Ndcg_k(labels.numpy(), sentences.numpy(), 5)
+        ndcg = Ndcg_k(labels.numpy(), pred_cpu.numpy(), 5)
         ndcg_k.append(ndcg)
 
     avg_test_loss = np.mean(test_loss)
     test_prec = np.array(prec_k).mean(axis=0)
     test_ndcg = np.array(ndcg_k).mean(axis=0)
 
-    return avg_test_loss, test_prec, test_ndcg
-    print("epoch %2d test end : avg_loss = %.4f" % (i+1, avg_test_loss))
+    print("epoch %2d test end : avg_loss = %.4f" % (epoch, avg_test_loss))
     print("precision@1 : %.4f , precision@3 : %.4f , precision@5 : %.4f " % (
     test_prec[0], test_prec[2], test_prec[4]))
     print("ndcg@1 : %.4f , ndcg@3 : %.4f , ndcg@5 : %.4f " % (test_ndcg[0], test_ndcg[2], test_ndcg[4]))
 
-def oneHotEncoder(x):
-    vec = torch.zeros(22) #21 is the number of toke labels
-    vec[x.item()] = 1
-    return vec
+def oneHotEncoder(x, label_size):
+    x_ = torch.zeros((x.shape[0], label_size))
+    for i in range(len(x)):
+        x_[i][x[i].item()] = 1
+    return x_
 
 
 def precision_k(true_mat, score_mat, k):
@@ -153,12 +125,13 @@ def precision_k(true_mat, score_mat, k):
     for k in range(k):
         score_mat = np.copy(backup)
         for i in range(rank_mat.shape[0]):
+            print(rank_mat[i, :-(k + 1)])
+            print(score_mat[i])
             score_mat[i][rank_mat[i, :-(k + 1)]] = 0
         score_mat = np.ceil(score_mat)
         #         kk = np.argwhere(score_mat>0)
-        print(score_mat, true_mat)
         mat = np.multiply(score_mat, true_mat)
-        #print("mat",mat)
+        #         print("mat",mat)
         num = np.sum(mat, axis=1)
         p[k] = np.mean(num / (k + 1))
     return np.around(p, decimals=4)
@@ -240,5 +213,6 @@ abs_encoder_model = lwan.AbstractEncoder(drop_out=0.3,
                                         embeddings=word_embed)
 
 criterion = torch.nn.BCELoss()
-opt = torch.optim.Adam(lwan_model.parameters(), lr=0.001, betas=(0.9, 0.99))
-train(lwan_model, abs_encoder_model, san_model, train_loader, test_loader, criterion, opt, epochs = 5, GPU=True)
+combined_params = list(lwan_model.parameters()) + list(san_model.parameters())
+opt = torch.optim.Adam(combined_params, lr=0.0001)
+train(lwan_model, abs_encoder_model, san_model, train_loader, test_loader, criterion, opt, epochs = 10, GPU=True)
