@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from flair.data import Sentence
+from flair.data import Corpus, Sentence
 from flair.embeddings import TransformerDocumentEmbeddings, TransformerWordEmbeddings
 
 class BasicModule(torch.nn.Module):
@@ -19,14 +19,13 @@ class BasicModule(torch.nn.Module):
         return path
 
 class LabelWordAttention(BasicModule):
-    def __init__(self, drop_out, batch_size, emb_dim, lstm_hdim, d_a, vocab, token_tag_map, sentence_tag_map, token_label_embeddings, transformer_embeddings):
+    def __init__(self, drop_out, batch_size, emb_dim, lstm_hdim, d_a, token_tag_map, sentence_tag_map, token_label_embeddings, embeddings, transformer=True):
         super(LabelWordAttention, self).__init__()
         self.token_classes = len(token_tag_map)
         self.sentence_classes = len(sentence_tag_map)
-        self.word_embeddings = transformer_embeddings
-        self.token_label_embeddings = token_label_embeddings
-        self.vocab = vocab
-        self.emb_dim = emb_dim
+        self.embeddings = self.load_embeddings(embeddings)
+        self.token_label_embeddings = self.load_embeddings(token_label_embeddings, transformer=True)
+        self.transformer = transformer
 
         self.word_lstm = nn.LSTM(emb_dim, hidden_size=lstm_hdim, num_layers=1, batch_first=True, bidirectional=True)
         self.linear_first = nn.Linear(lstm_hdim*2, d_a)
@@ -44,54 +43,51 @@ class LabelWordAttention(BasicModule):
         return (torch.randn(2, sent_len, self.lstm_hid_dim).cuda(),
                 torch.randn(2, sent_len, self.lstm_hid_dim).cuda())
 
-    def load_token_embeddings(self, sentence, transformer_embeddings, vocab, token_label_embs=True):
+    def load_embeddings(self, embeddings, transformer=False):
         """Load the embeddings based on flag"""
-        if not token_label_embs:
-            sentence = [i.item() for i in sentence]
-            vocab_reversed = dict([(v,k) for k,v in vocab.items()])
-            sentence = [vocab_reversed[i] for i in sentence if i > 1]
-            sentence = Sentence(' '.join(sentence))
-            transformer_embeddings.embed(sentence)
-            embeddings_ = torch.zeros((len(sentence), self.emb_dim))
-            for i,tok in enumerate(sentence):
-                print(tok.text)
-                embeddings_[i] = tok.embedding
-            embeddings_ = embeddings_.unsqueeze(1).cuda()
+        if transformer:
+            embeddings_ = embeddings
         else:
-            embeddings = self.token_label_embeddings
             embeddings_ = torch.nn.Embedding(embeddings.shape[0], embeddings.shape[1])
             embeddings_.weight = torch.nn.Parameter(embeddings)
         return embeddings_
 
-    def forward(self, x, abstract, abstract_encoder=False):
-        embeddings = self.load_token_embeddings(x, self.word_embeddings, self.vocab, token_label_embs=False)
-        sent_len = embeddings.size(0)
-        print('Embedding of a token ', embeddings.size())
+    def forward(self, x):
+        # print(1, x.shape)
+        embeddings = self.embeddings(x)
+        print(1, embeddings.shape)
+        embeddings = self.embedding_dropout(embeddings)
+        #embeddings = embeddings.expand(1, embeddings.size(0), embeddings.size(1))
+        # print(2, 'Embedding of a token ', embeddings.size())
         # step1 get LSTM outputs
         hidden_state = self.init_hidden(sent_len)
-        outputs, hidden_state = self.word_lstm(embeddings, hidden_state)
-        print('LSTM ouput: ', outputs.shape, 'LSTM hidden state: ', hidden_state[0].shape)
+        outputs_, hidden_state = self.word_lstm(embeddings, hidden_state)
+        # print(3, 'LSTM ouput: ', outputs.shape,'Abstract',abstract.shape, 'LSTM hidden state: ', hidden_state[0].shape)
         #outputs = torch.add(outputs, abstract) if abstract_encoder else outputs
+        abstract = torch.mean(abstract, dim=0)
+        outputs_shape = outputs_.shape
+        outputs = torch.zeros((outputs_shape[0], outputs_shape[1], outputs_shape[2])).cuda()
+        for i in range(outputs_shape[0]):
+            outputs[i] = torch.add(abstract, outputs_[i])
         # step2 get self-attention
         selfatt = torch.tanh(self.linear_first(outputs))
         selfatt = self.linear_second(selfatt)
         selfatt = F.softmax(selfatt, dim=1)
-        #print('Self Attention: ', selfatt.shape)
+        # print(4, 'Self Attention: ', selfatt.shape)
         selfatt = selfatt.transpose(1, 2)
         self_att = torch.bmm(selfatt, outputs)
-        #print('Self attention token representation: ', self_att.shape)
+        # print(5, 'Self attention token representation: ', self_att.shape)
         # step3 get label-attention
         h1 = outputs[:, :, :self.lstm_hid_dim]
         h2 = outputs[:, :, self.lstm_hid_dim:]
 
-        token_label_embed = self.load_token_embeddings(x, self.word_embeddings, self.vocab, token_label_embs=True)
-        token_label_embed = token_label_embed.weight.data
-        #print('token label matrix size: ', token_label_embed.shape, 'h1: ', h1.shape)
+        token_label_embed = self.token_label_embeddings.weight.data
+        # print(6, 'token label matrix size: ', token_label_embed.shape, 'h1: ', h1.shape)
         m1 = torch.bmm(token_label_embed.expand(sent_len, self.token_classes, self.lstm_hid_dim), h1.transpose(1, 2))
         m2 = torch.bmm(token_label_embed.expand(sent_len, self.token_classes, self.lstm_hid_dim), h2.transpose(1, 2))
-        #print('M1', m1.shape, 'M2', m2.shape)
+        # print(7, 'M1', m1.shape, 'M2', m2.shape)
         label_att = torch.cat((torch.bmm(m1, h1), torch.bmm(m2, h2)), 2)
-        #print('Label att', label_att.shape)
+        # print(8, 'Label att', label_att.shape)
         # label_att = F.normalize(label_att, p=2, dim=-1)
         # self_att = F.normalize(self_att, p=2, dim=-1) #all can
         weight1 = torch.sigmoid(self.weight1(label_att))
@@ -100,14 +96,14 @@ class LabelWordAttention(BasicModule):
         weight2 = 1 - weight1
 
         tok = weight1 * label_att + weight2 * self_att
-        #print('Final token representation: ', tok.shape)
+        # print(9, 'Final token representation: ', tok.shape)
         # there two method, for simple, just add
         # also can use linear to do it
         avg_embeddings = torch.sum(tok, 2) / self.token_classes
-        #print('av embeddings', avg_embeddings.shape)
+        # print(10, 'av embeddings', avg_embeddings.shape)
         # avg_embeddings = self.output_layer(avg_embeddings)
-        # print('av embeddings', avg_embeddings.shape)
-        pred = F.sigmoid(avg_embeddings)
+        # print(11, 'av embeddings', avg_embeddings.shape)
+        pred = torch.sigmoid(avg_embeddings)
         return tok, pred
 
 
