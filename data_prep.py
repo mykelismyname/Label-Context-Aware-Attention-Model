@@ -362,6 +362,27 @@ def convert_json_to_text(file):
         a.close()
         b.close()
 
+def remove_bracket_tags(file, dest):
+    file_name = os.path.basename(file)
+    with open(file, 'r') as f, open(os.path.join(dest, file_name), 'w') as d:
+        f_read = f.readlines()
+        for line in f_read:
+            if re.search('^\[.*?\]', line):
+                pass
+            elif line == '\n':
+                d.write('\n')
+            else:
+                line_split = line.strip().split(' ', 2)
+                if len(line_split) == 2:
+                    d.write('{}'.format(line))
+                else:
+                    line_3 = line_split[2]
+                    line_3 = ast.literal_eval(line_3)
+                    line_3_split = list(set(line_3))
+                    d.write('{} {}-{}\n'.format(line_split[0], line_split[1].split('-')[0], line_3_split[-1]))
+        f.close()
+        d.close()
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, required=True, help='data source')
@@ -389,6 +410,8 @@ if __name__ == '__main__':
             count_sentence_length(files)
         elif args.function_name.strip() == 'convert_json_to_text':
             convert_json_to_text(args.data)
+        elif args.function_name.strip() == 'remove_bracket_tags':
+            remove_bracket_tags(file=args.data, dest=args.outputdir)
         elif args.function_name.strip() == 'transformer_data_preparation':
             X = np.load("{}/X_{}.npy".format(args.data, args.dataset))
             Y = np.load("{}/X_label_{}.npy".format(args.data, args.dataset))
