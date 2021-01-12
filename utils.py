@@ -139,6 +139,36 @@ def createVocabFromGloveWordEmbs(vectors):
         vec.close()
         voc.close()
 
+def algin_vocab_embeddings(vocab_file, embs_file):
+    embs_file_dir = os.path.dirname(embs_file)
+    embs_file_name = os.path.basename(embs_file)
+    dummy_file = embs_file_dir + '/' + embs_file_name.split('.')[0] + '.bak'
+    with open(vocab_file, 'r') as f, open(embs_file, 'r') as g, open(dummy_file, 'w') as h:
+        vocab = json.load(f)
+        vocab = dict(sorted(vocab.items(), key=lambda x:x[1]))
+        embeddings = g.readlines()
+        for word,vec in vocab.items():
+            for i,line in enumerate(embeddings):
+                line = line.split()
+                if word == line[0].strip():
+                    h.write(word.strip() + ' ' + ' '.join(str(i) for i in line[1:]))
+                    h.write('\n')
+                    break
+        f.close()
+    #os.remove(embs_file)
+    #os.rename(dummy_file, embs_file_dir + '/' + embs_file_name)
+
+def count(embs_file):
+    with open(embs_file, 'r') as g:
+        embeddings = g.readlines()
+        l = []
+        for i,line in enumerate(embeddings):
+            line = line.split()
+            l.append(line[0])
+            print(i, line[0])
+        print(len(l))
+        g.close()
+
 # data = 'multi-label-module/multi-labelled-data/'
 # data = [i for i in glob('{}/*.txt'.format(data)) if i.__contains__('train') or i.__contains__('dev')]
 # print(data)
@@ -148,3 +178,5 @@ def createVocabFromGloveWordEmbs(vectors):
 # text2embed('multi-labelled-data/LWAN_1/token_labels_embed.txt', 300, 'multi-labelled-data/LWAN_1/')
 # addWordEmbs(['<pad>','<unk>'], 300, 'multi-label-module/multi-labelled-data/LSAN/word_embed.txt')
 # createVocabFromGloveWordEmbs('multi-labelled-data/LWAN_1/token_labels_embed.txt')
+# algin_vocab_embeddings('multi-labelled-data/lwan2/token_labels.json', 'multi-labelled-data/lwan2/token_labels_embed.txt')
+# count('multi-labelled-data/lwan2/word_embed.txt')
