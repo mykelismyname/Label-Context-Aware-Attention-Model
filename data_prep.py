@@ -19,8 +19,8 @@ from gensim.models import Word2Vec
 
 def create_vocabularly(data_input, output_dir, tokenizer):
     #define a tokenizer borrowing keras processing
-    vocab, tag_count, tag_map, all_sentences = {"<unk>":0, "<pad>":1}, {}, {"<pad>":0}, {}
-    num_words, num_tags = 2, 1
+    vocab, tag_count, tag_map, all_sentences = {"<pad>":0}, {}, {}, {}
+    num_words, num_tags = 1, 0
     all_sentences, all_sentence_labels = {}, []
 
     if type(data_input) == str:
@@ -91,13 +91,14 @@ def create_vocabularly(data_input, output_dir, tokenizer):
 
     print(len(all_sentences), len(all_sentence_labels))
     index2word = dict([(v,k) for k,v in vocab.items()])
+    tag_map = dict(sorted(tag_map.items(), key=lambda x: x[0]))
     index2tag = dict([(v,k) for k,v in tag_map.items()])
 
-    with open(os.path.join(output_dir, 'vocab_.json'), 'w') as word_map,\
-            open(os.path.join(output_dir, 'token_labels_.json'), 'w') as tok, \
-                open(os.path.join(output_dir, 'sentence_labels_.txt'), 'w') as slabel:
+    with open(os.path.join(output_dir, 'vocab.json'), 'w') as word_map,\
+            open(os.path.join(output_dir, 'token_labels.json'), 'w') as tok, \
+                open(os.path.join(output_dir, 'sentence_labels.txt'), 'w') as slabel:
         json.dump(vocab, word_map, indent=2)
-        json.dump(dict(sorted(tag_map.items(), key=lambda x:x[0])), tok, indent=2)
+        json.dump(tag_map, tok, indent=2)
         all_sentence_labels = sorted(list(set([l for sent_labels in all_sentence_labels for l in sent_labels])))
         for l in all_sentence_labels:
             slabel.write('{}\n'.format(l))
@@ -217,48 +218,51 @@ def pre_process_(documents, vocab, token_label_vocab, output_dir, method=None):
 
 #preparing data for LSAN model
 def pre_process(documents, vocab, token_label_vocab, output_dir, method=None, pad_value=500):
-    for file,docs in documents.items():
-        docs, sentence_labels = docs
-        document_matrix = np.ones((len(docs), pad_value)).astype(int)
-        token_label_matrix = np.zeros((len(docs), pad_value)).astype(int)
-        sentence_unique_labels = sorted(list(set([l for labs in sentence_labels for l in labs])))
-        sentence_label_matrix = np.zeros((len(docs), len(sentence_unique_labels)))
-        print(sentence_unique_labels)
-        sentence_label_map = dict([(sentence_unique_labels[index], index) for index in range(len(sentence_unique_labels))])
-        print(sentence_label_map)
-        print(token_label_vocab)
-        i = 0
-        for doc,lab in zip(docs, sentence_labels):
-            if len(doc) > pad_value:
-                raise ValueError('Youve got sentences longer than 500')
-            for k,d in enumerate(doc):
-                word, tag = d
-                document_matrix[i][k] = vocab[word]
-                if method.lower() == 'lwan':
-                    if i < 5:
-                        print(word, tag, vocab[word], token_label_vocab[tag])
-                    token_label_matrix[i][k] = token_label_vocab[tag]
-            for l in lab:
-                sentence_label_matrix[i][sentence_label_map[l]] = 1
-            i += 1
-            # print('\n')
+    with open(output_dir+'/dataset_stats', 'w') as ds:
+        for file,docs in documents.items():
+            docs, sentence_labels = docs
+            document_matrix = np.ones((len(docs), pad_value)).astype(int)
+            token_label_matrix = np.zeros((len(docs), pad_value)).astype(int)
+            sentence_unique_labels = sorted(list(set([l for labs in sentence_labels for l in labs])))
+            sentence_label_matrix = np.zeros((len(docs), len(sentence_unique_labels)))
+            print(sentence_unique_labels)
+            sentence_label_map = dict([(sentence_unique_labels[index], index) for index in range(len(sentence_unique_labels))])
+            print(sentence_label_map)
+            print(token_label_vocab)
+            i = 0
+            for doc,lab in zip(docs, sentence_labels):
+                if len(doc) > pad_value:
+                    raise ValueError('You have got sentences longer than {}'.format(pad_value))
+                for k,d in enumerate(doc):
+                    word, tag = d
+                    document_matrix[i][k] = vocab[word]
+                    if method.lower() == 'lwan':
+                        if i < 5:
+                            print(word, tag, vocab[word], token_label_vocab[tag])
+                        token_label_matrix[i][k] = token_label_vocab[tag]
+                for l in lab:
+                    sentence_label_matrix[i][sentence_label_map[l]] = 1
+                i += 1
+                # print('\n')
 
-        file_name = os.path.basename(file).split('.')
-        for b,matrix in enumerate([(document_matrix, token_label_matrix), sentence_label_matrix]):
-            if b == 0:
-                initial = 'X'
-                matrix,token_matrix = matrix
-            else:
-                initial = 'Y'
-            if method.lower() == 'lsan':
-                with open(os.path.join(output_dir, '{}_{}.npy'.format(initial, file_name[0])), 'wb') as file_out:
-                    np.save(file_out, matrix)
-            elif method.lower() == 'lwan':
-                with open(os.path.join(output_dir, '{}_{}.npy'.format(initial, file_name[0])), 'wb') as file_out,\
-                        open(os.path.join(output_dir, '{}_label_{}.npy'.format(initial, file_name[0])), 'wb') as file_tok_out:
-                    np.save(file_out, matrix)
-                    np.save(file_tok_out, token_matrix)
-        print('No of sentences in {} set is {}'.format(file_name, len(docs)), document_matrix.shape, sentence_label_matrix.shape)
+            file_name = os.path.basename(file).split('.')
+            for b,matrix in enumerate([(document_matrix, token_label_matrix), sentence_label_matrix]):
+                if b == 0:
+                    initial = 'X'
+                    matrix,token_matrix = matrix
+                else:
+                    initial = 'Y'
+                if method.lower() == 'lsan' or initial == 'Y':
+                    with open(os.path.join(output_dir, '{}_{}.npy'.format(initial, file_name[0])), 'wb') as file_out:
+                        np.save(file_out, matrix)
+                elif method.lower() == 'lwan':
+                    with open(os.path.join(output_dir, '{}_{}.npy'.format(initial, file_name[0])), 'wb') as file_out,\
+                            open(os.path.join(output_dir, '{}_label_{}.npy'.format(initial, file_name[0])), 'wb') as file_tok_out:
+                        np.save(file_out, matrix)
+                        np.save(file_tok_out, token_matrix)
+            ds.write('{} sentences: {}\n'.format(file_name, len(docs)))
+            ds.write('Sentences shape: {} and Sentence labels shape {}\n'.format(document_matrix.shape, sentence_label_matrix.shape))
+            ds.write('\n')
 
     return document_matrix, token_label_matrix, sentence_label_matrix
 
@@ -364,6 +368,7 @@ def convert_json_to_text(file):
 
 def remove_bracket_tags(file, dest):
     file_name = os.path.basename(file)
+    k = []
     with open(file, 'r') as f, open(os.path.join(dest, file_name), 'w') as d:
         f_read = f.readlines()
         for line in f_read:
@@ -373,15 +378,18 @@ def remove_bracket_tags(file, dest):
                 d.write('\n')
             else:
                 line_split = line.strip().split(' ', 2)
+                k.append(line_split[1])
                 if len(line_split) == 2:
                     d.write('{}'.format(line))
                 else:
                     line_3 = line_split[2]
                     line_3 = ast.literal_eval(line_3)
                     line_3_split = list(set(line_3))
+                    # print(line_3_split)
                     d.write('{} {}-{}\n'.format(line_split[0], line_split[1].split('-')[0], line_3_split[-1]))
         f.close()
         d.close()
+    print(list(set(k)))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -431,15 +439,12 @@ if __name__ == '__main__':
         all_sentences, vocab, index2word, num_words, tag_map, index2tag = create_vocabularly(data_input=data,
                                                                                             output_dir=args.outputdir,
                                                                                             tokenizer=args.tokenizer)
-        with open(args.vocab, 'r') as voc, open(args.token_vocab, 'r') as tok_voc:
-            vocab = json.load(voc)
-            tok_vocab = json.load(tok_voc)
-            #pre-process data, args.method == 'LSAN'/'LWAN'
-            document_matrix, sentence_label_matrix, token_label_matrix = pre_process(documents=all_sentences,
-                                                                                     vocab=vocab,
-                                                                                     token_label_vocab=tok_vocab,
-                                                                                     method=args.method,
-                                                                                     output_dir=args.outputdir)
+
+        document_matrix, sentence_label_matrix, token_label_matrix = pre_process(documents=all_sentences,
+                                                                                 vocab=vocab,
+                                                                                 token_label_vocab=tag_map,
+                                                                                 method=args.method,
+                                                                                 output_dir=args.outputdir)
 
         #utils.create_dataset_to_encode(datafiles=data, tokenizer=args.tokenizer, output_dir=args.outputdir)
 
