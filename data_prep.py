@@ -168,60 +168,60 @@ def re_split_sentences(s, tokenizer):
         raise ValueError('Something is wrong')
     return toks_split, tags_split
 
-#preparing data for LSAN model
-def pre_process_(documents, vocab, token_label_vocab, output_dir, method=None):
-    for file,docs in documents.items():
-        docs, sentence_labels = docs
-        document_matrix = []
-        token_label_matrix = []
-        sentence_unique_labels = sorted(list(set([l for labs in sentence_labels for l in labs])))
-        sentence_label_matrix = np.zeros((len(docs), len(sentence_unique_labels)))
-        print(sentence_unique_labels)
-        sentence_label_map = dict([(sentence_unique_labels[index], index) for index in range(len(sentence_unique_labels))])
-        print(sentence_label_map)
-        print(token_label_vocab)
-        i = 0
-        for doc,lab in zip(docs, sentence_labels):
-            doc_matrix = np.zeros(len(doc))
-            tok_matrix = np.zeros(len(doc))
-            for k,d in enumerate(doc):
-                word, tag = d
-                doc_matrix[k] = vocab[word]
-                if method.lower() == 'lwan':
-                    tok_matrix[k] = token_label_vocab[tag]
-            for l in lab:
-                sentence_label_matrix[i][sentence_label_map[l]] = 1
-            i += 1
-            document_matrix.append(doc_matrix.tolist())
-            token_label_matrix.append(tok_matrix.tolist())
+#preparing data for LWAN normalizing the tags as B-outcome and I-outcome
+def pre_process_(data, vocab, token_label_vocab, output_dir, method=None, pad_value=500):
+    with open(output_dir + '/dataset_stats', 'w') as ds:
+        for file in data:
+            with open(file, 'r') as a, open(vocab, 'r') as b, open(token_label_vocab, 'r') as c:
+                file_contents = a.readlines()
+                vocab_ = json.load(b)
+                token_label_vocab_ = json.load(c)
+                docs, doc = [], []
+                for line in file_contents:
+                    if line == '\n':
+                        if doc:
+                            docs.append([i for i in doc])
+                        doc.clear()
+                    else:
+                        w,t = line.split()
+                        if t[0] in ['B', 'I']:
+                            t = t[0]+'-outcome'
+                        doc.append((w, t))
+                i = 0
+                document_matrix = np.zeros((len(docs), pad_value)).astype(int)
+                token_label_matrix = np.zeros((len(docs), pad_value)).astype(int)
+                for doc in docs:
+                    if len(doc) > pad_value:
+                        raise ValueError('You have got sentences longer than {}'.format(pad_value))
+                    for k, d in enumerate(doc):
+                        word, tag = d
+                        document_matrix[i][k] = vocab_[word.strip()]
+                        if method.lower() == 'lwan':
+                            if i < 5:
+                                print(word, tag, vocab_[word.strip()], token_label_vocab_[tag.strip()])
+                            token_label_matrix[i][k] = token_label_vocab_[tag.strip()]
+                    i += 1
 
+                file_name = os.path.basename(file).split('.')
+                for b, matrix in enumerate([(document_matrix, token_label_matrix)]):
+                    initial = 'X'
+                    matrix, token_matrix = matrix
+                    with open(os.path.join(output_dir, '{}_{}.npy'.format(initial, file_name[0])), 'wb') as file_out, \
+                            open(os.path.join(output_dir, '{}_label_{}.npy'.format(initial, file_name[0])),
+                                 'wb') as file_tok_out:
+                        np.save(file_out, matrix)
+                        np.save(file_tok_out, token_matrix)
+                ds.write('{} sentences: {}\n'.format(file_name, len(docs)))
+                ds.write('\n')
 
-        file_name = os.path.basename(file).split('.')
-        document_matrix, token_label_matrix = np.array(document_matrix), np.array(token_label_matrix)
-        for b,matrix in enumerate([(np.array(document_matrix), np.array(token_label_matrix)), sentence_label_matrix]):
-            if b == 0:
-                initial = 'X'
-                matrix,token_matrix = matrix
-            else:
-                initial = 'Y'
-            if method.lower() == 'lsan':
-                with open(os.path.join(output_dir, '{}_{}.npy'.format(initial, file_name[0])), 'wb') as file_out:
-                    np.save(file_out, matrix)
-            elif method.lower() == 'lwan':
-                with open(os.path.join(output_dir, '{}_{}.npy'.format(initial, file_name[0])), 'wb') as file_out,\
-                        open(os.path.join(output_dir, '{}_label_{}.npy'.format(initial, file_name[0])), 'wb') as file_tok_out:
-                    np.save(file_out, matrix)
-                    np.save(file_tok_out, token_matrix)
-        print('No of sentences in {} set is {}'.format(file_name, len(docs)), document_matrix.shape, sentence_label_matrix.shape)
-
-    return document_matrix, token_label_matrix, sentence_label_matrix
+    return document_matrix, token_label_matrix
 
 #preparing data for LSAN model
 def pre_process(documents, vocab, token_label_vocab, output_dir, method=None, pad_value=500):
     with open(output_dir+'/dataset_stats', 'w') as ds:
         for file,docs in documents.items():
             docs, sentence_labels = docs
-            document_matrix = np.ones((len(docs), pad_value)).astype(int)
+            document_matrix = np.zeros((len(docs), pad_value)).astype(int)
             token_label_matrix = np.zeros((len(docs), pad_value)).astype(int)
             sentence_unique_labels = sorted(list(set([l for labs in sentence_labels for l in labs])))
             sentence_label_matrix = np.zeros((len(docs), len(sentence_unique_labels)))
@@ -403,6 +403,7 @@ if __name__ == '__main__':
     parser.add_argument("--vocab", type=str, help="vocabularly source")
     parser.add_argument("--token_vocab", type=str, help="vocabularly source")
     parser.add_argument("--method", type=str, default=None, help="LSAN")
+    parser.add_argument("--normalize_toke_tags", action="store_true", help="Convert all 'X' to outcome in B-X and I-X ")
 
     args = parser.parse_args()
     if args.outputdir:
@@ -440,12 +441,17 @@ if __name__ == '__main__':
                                                                                             output_dir=args.outputdir,
                                                                                             tokenizer=args.tokenizer)
 
-        document_matrix, sentence_label_matrix, token_label_matrix = pre_process(documents=all_sentences,
+        document_matrix, token_label_matrix, sentence_label_matrix = pre_process(documents=all_sentences,
                                                                                  vocab=vocab,
                                                                                  token_label_vocab=tag_map,
                                                                                  method=args.method,
                                                                                  output_dir=args.outputdir)
-
+        if args.normalize_token_tags:
+            document_matrix, token_label_matrix = pre_process_(data=data,
+                                                             vocab=args.vocab,
+                                                             token_label_vocab=args.token_vocab,
+                                                             output_dir=args.outputdir,
+                                                             method=args.method)
         #utils.create_dataset_to_encode(datafiles=data, tokenizer=args.tokenizer, output_dir=args.outputdir)
 
 
