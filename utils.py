@@ -155,8 +155,8 @@ def algin_vocab_embeddings(vocab_file, embs_file):
                     h.write('\n')
                     break
         f.close()
-    #os.remove(embs_file)
-    #os.rename(dummy_file, embs_file_dir + '/' + embs_file_name)
+    os.remove(embs_file)
+    os.rename(dummy_file, embs_file_dir + '/' + embs_file_name)
 
 def count(embs_file):
     with open(embs_file, 'r') as g:
@@ -175,8 +175,8 @@ def count(embs_file):
 # #create_dataset_to_encode(datafiles=data, tokenizer='spacy')
 # main(data, tokenizer='spacy')
 # #vocab_count('ebm_comet_train_dev')
-# text2embed('multi-labelled-data/LWAN_1/token_labels_embed.txt', 300, 'multi-labelled-data/LWAN_1/')
+# text2embed('multi-labelled-data/lwan_ebm_comet/lwan/token_labels_embed.txt', 300, 'multi-labelled-data/lwan_ebm_comet/lwan/')
 # addWordEmbs(['<pad>','<unk>'], 300, 'multi-label-module/multi-labelled-data/LSAN/word_embed.txt')
 # createVocabFromGloveWordEmbs('multi-labelled-data/LWAN_1/token_labels_embed.txt')
-# algin_vocab_embeddings('multi-labelled-data/lwan2/token_labels.json', 'multi-labelled-data/lwan2/token_labels_embed.txt')
+# algin_vocab_embeddings('multi-labelled-data/lwan_ebm_comet/lwan/token_labels.json', 'multi-labelled-data/lwan_ebm_comet/lwan/token_labels_embed.txt')
 # count('multi-labelled-data/lwan2/word_embed.txt')
