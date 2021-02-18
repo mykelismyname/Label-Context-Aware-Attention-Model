@@ -6,6 +6,7 @@ import spacy
 import ast
 import numpy as np
 from glob import glob
+import argparse
 
 st_nlp = stanza.Pipeline('en', processors='tokenize,pos', use_gpu=True, pos_batch_size=3000)
 sp_nlp = spacy.load('en_core_web_sm')
@@ -52,8 +53,6 @@ def tokenize(sent, tokenizer):
         for s in doc:
             k.append(s.text)
     return k
-
-
 
 def main(data_input, tokenizer):
     word_map = {}
@@ -112,7 +111,7 @@ def text2embed(emb_file, emb_size, dest_dir):
             print(len(n))
         np.save(l_f, labels)
 
-#append new words to the top of the embeddings text file for LSAN method
+#append new words "pad" to the top of the embeddings text file for LSAN method
 def addWordEmbs(words, emb_size, embs_file):
     embs_file_dir = os.path.dirname(embs_file)
     embs_file_name = os.path.basename(embs_file)
@@ -127,8 +126,10 @@ def addWordEmbs(words, emb_size, embs_file):
     os.remove(embs_file)
     os.rename(dummy_file, embs_file_dir+'/'+embs_file_name)
 
-def createVocabFromGloveWordEmbs(vectors):
-    dest = os.path.dirname(vectors)
+#create vocabularly from vectors/embeddings
+def createVocabFromGloveWordEmbs(vectors, dest=None):
+    if not dest:
+        dest = os.path.dirname(vectors)
     voc_file, num = {}, 0
     with open(vectors, 'r') as vec, open(dest+'/token_labels.json','w') as voc:
         for i in vec:
@@ -139,10 +140,13 @@ def createVocabFromGloveWordEmbs(vectors):
         vec.close()
         voc.close()
 
-def algin_vocab_embeddings(vocab_file, embs_file):
+#align token embeddings with vocab
+def algin_vocab_embeddings(vocab_file, embs_file, dest=None):
     embs_file_dir = os.path.dirname(embs_file)
     embs_file_name = os.path.basename(embs_file)
-    dummy_file = embs_file_dir + '/' + embs_file_name.split('.')[0] + '.bak'
+    if not dest:
+        dest = embs_file_dir
+    dummy_file = dest + '/' + embs_file_name.split('.')[0] + '.bak'
     with open(vocab_file, 'r') as f, open(embs_file, 'r') as g, open(dummy_file, 'w') as h:
         vocab = json.load(f)
         vocab = dict(sorted(vocab.items(), key=lambda x:x[1]))
@@ -155,28 +159,46 @@ def algin_vocab_embeddings(vocab_file, embs_file):
                     h.write('\n')
                     break
         f.close()
-    os.remove(embs_file)
-    os.rename(dummy_file, embs_file_dir + '/' + embs_file_name)
+    # os.remove(embs_file)
+    # os.rename(dummy_file, dest + '/' + embs_file_name)
 
-def count(embs_file):
-    with open(embs_file, 'r') as g:
+def count(embs_file, json_file):
+    with open(embs_file, 'r') as g, open(json_file, 'r') as p:
         embeddings = g.readlines()
+        o = []
+        for k,v in json.load(p).items():
+            o.append(k.lower())
         l = []
         for i,line in enumerate(embeddings):
             line = line.split()
-            l.append(line[0])
-            print(i, line[0])
+            l.append(line[0].strip())
+            if len(line[1:]) != 300:
+                print(i, line[0], len(line[1:]))
         print(len(l))
+        h = [i for i in o if i not in l]
+        print(h)
+        # m = [i for i in l if i not in o]
+        # print(m)
         g.close()
 
-# data = 'multi-label-module/multi-labelled-data/'
-# data = [i for i in glob('{}/*.txt'.format(data)) if i.__contains__('train') or i.__contains__('dev')]
-# print(data)
-# #create_dataset_to_encode(datafiles=data, tokenizer='spacy')
-# main(data, tokenizer='spacy')
-# #vocab_count('ebm_comet_train_dev')
-# text2embed('multi-labelled-data/lwan_ebm_comet/lwan/token_labels_embed.txt', 300, 'multi-labelled-data/lwan_ebm_comet/lwan/')
-# addWordEmbs(['<pad>','<unk>'], 300, 'multi-label-module/multi-labelled-data/LSAN/word_embed.txt')
-# createVocabFromGloveWordEmbs('multi-labelled-data/LWAN_1/token_labels_embed.txt')
-# algin_vocab_embeddings('multi-labelled-data/lwan_ebm_comet/lwan/token_labels.json', 'multi-labelled-data/lwan_ebm_comet/lwan/token_labels_embed.txt')
-# count('multi-labelled-data/lwan2/word_embed.txt')
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data', type=str, default='multi-label-module/multi-labelled-data/', required=True, help='data source')
+    parser.add_argument("--function_name", type=str, help="function to execute")
+    parser.add_argument("--source_vocab", type=str, default='multi-labelled-data/lwan_normalize/token_labels.json', help="e.g count_sentence_length or create_train_dev_test")
+    parser.add_argument('--dest', type=str, help='directory to hold output files')
+    args = parser.parse_args()
+    data = [i for i in glob('{}/*.txt'.format(args.data)) if i.__contains__('train') or i.__contains__('dev')]
+    # main(data, tokenizer='spacy')
+    if args.function_name == 'create_dataset_to_encode':
+        create_dataset_to_encode(datafiles=data, tokenizer='spacy')
+    elif args.function_name == 'text2embed':
+        text2embed(args.data, 300, args.dest)
+    elif args.function_name == 'addWordEmbs':
+        addWordEmbs(['<pad>'], 300, args.data)
+    elif args.function_name == 'createVocabFromGloveWordEmbs':
+        createVocabFromGloveWordEmbs('multi-labelled-data/lwan_ebm_comet/lwan/token_labels_embed.txt', dest='multi-labelled-data/lwan_ebm_comet/lwan')
+    elif args.function_name == 'align_vocab_embeddings':
+        algin_vocab_embeddings(args.source_vocab, args.data, dest=args.dest)
+    elif args.function_name == 'count':
+        count('multi-labelled-data/lwan/word_embed.txt', 'multi-labelled-data/lwan_normalize/vocab.json')
