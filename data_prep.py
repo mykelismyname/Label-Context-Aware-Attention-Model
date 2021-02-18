@@ -89,7 +89,7 @@ def create_vocabularly(data_input, output_dir, tokenizer):
             all_sentences[file] = [file_sentences, file_sentence_labels]
             all_sentence_labels += file_sentence_labels
 
-    print(len(all_sentences), len(all_sentence_labels))
+    print(len(all_sentences), len(all_sentence_labels), tag_map)
     index2word = dict([(v,k) for k,v in vocab.items()])
     tag_map = dict(sorted(tag_map.items(), key=lambda x: x[0]))
     index2tag = dict([(v,k) for k,v in tag_map.items()])
@@ -121,14 +121,26 @@ def re_split_sentences(s, tokenizer):
         x = x.strip()
         if y == n:
             if x == toks[m]:
-                tags_split.append(tags[m])
+                if not args.normalize_token_tags:
+                    tags_split.append(tags[m])
+                else:
+                    if tags[m][0] in ['B', 'I']:
+                        tags_split.append(tags[m][0]+'-outcome')
+                    else:
+                        tags_split.append(tags[m])
                 m += 1
             else:
                 x_ += x
                 if tags[m][0] in ['B', 'I']:
-                    tags_split.append(tags[m])
+                    if not args.normalize_token_tags:
+                        tags_split.append(tags[m])
+                    else:
+                        tags_split.append(tags[m][0]+'-outcome')
                     for j in toks_split[y+1:]:
-                        tags_split.append('I-{}'.format(tags[m][2:]))
+                        if not args.normalize_token_tags:
+                            tags_split.append('I-{}'.format(tags[m][2:]))
+                        else:
+                            tags_split.append(('I-outcome'))
                         x_ += j
                         n += 1
                         if x_ == toks[m]:
@@ -183,6 +195,7 @@ def pre_process_(data, vocab, token_label_vocab, output_dir, method=None, pad_va
                             docs.append([i for i in doc])
                         doc.clear()
                     else:
+                        print(file, line)
                         w,t = line.split()
                         if t[0] in ['B', 'I']:
                             t = t[0]+'-outcome'
@@ -195,10 +208,10 @@ def pre_process_(data, vocab, token_label_vocab, output_dir, method=None, pad_va
                         raise ValueError('You have got sentences longer than {}'.format(pad_value))
                     for k, d in enumerate(doc):
                         word, tag = d
-                        document_matrix[i][k] = vocab_[word.strip()]
-                        if method.lower() == 'lwan':
+                        document_matrix[i][k] = vocab_[word.lower().strip()]
+                        if method.lower() == 'lcwan':
                             if i < 5:
-                                print(word, tag, vocab_[word.strip()], token_label_vocab_[tag.strip()])
+                                print(word, tag, vocab_[word.lower().strip()], token_label_vocab_[tag.strip()])
                             token_label_matrix[i][k] = token_label_vocab_[tag.strip()]
                     i += 1
 
@@ -225,10 +238,10 @@ def pre_process(documents, vocab, token_label_vocab, output_dir, method=None, pa
             token_label_matrix = np.zeros((len(docs), pad_value)).astype(int)
             sentence_unique_labels = sorted(list(set([l for labs in sentence_labels for l in labs])))
             sentence_label_matrix = np.zeros((len(docs), len(sentence_unique_labels)))
-            print(sentence_unique_labels)
+            print(1, sentence_unique_labels)
             sentence_label_map = dict([(sentence_unique_labels[index], index) for index in range(len(sentence_unique_labels))])
-            print(sentence_label_map)
-            print(token_label_vocab)
+            print(2, sentence_label_map)
+            print(3, token_label_vocab)
             i = 0
             for doc,lab in zip(docs, sentence_labels):
                 if len(doc) > pad_value:
@@ -236,7 +249,7 @@ def pre_process(documents, vocab, token_label_vocab, output_dir, method=None, pa
                 for k,d in enumerate(doc):
                     word, tag = d
                     document_matrix[i][k] = vocab[word]
-                    if method.lower() == 'lwan':
+                    if method.lower() == 'lcwan':
                         if i < 5:
                             print(word, tag, vocab[word], token_label_vocab[tag])
                         token_label_matrix[i][k] = token_label_vocab[tag]
@@ -255,7 +268,7 @@ def pre_process(documents, vocab, token_label_vocab, output_dir, method=None, pa
                 if method.lower() == 'lsan' or initial == 'Y':
                     with open(os.path.join(output_dir, '{}_{}.npy'.format(initial, file_name[0])), 'wb') as file_out:
                         np.save(file_out, matrix)
-                elif method.lower() == 'lwan':
+                elif method.lower() == 'lcwan':
                     with open(os.path.join(output_dir, '{}_{}.npy'.format(initial, file_name[0])), 'wb') as file_out,\
                             open(os.path.join(output_dir, '{}_label_{}.npy'.format(initial, file_name[0])), 'wb') as file_tok_out:
                         np.save(file_out, matrix)
@@ -294,7 +307,7 @@ def create_train_dev_test(file, split_percentage):
     if len(split_percentage) == 2:
         dataset_lengh = len(sentences)
         train_length, test_length = [int((i/100)*dataset_lengh) for i in split_percentage]
-        file_path = os.path.dirname(file)
+        file_path = args.outputdir
         for i in range(3):
             if i == 0:
                 train_sents = sentences[:train_length]
@@ -354,6 +367,7 @@ def count_sentence_length(files):
     average_sent_len = np.mean([len(i) for i in all_sentences])
     print('Longest sentence length', longest_sentence)
     print('Average sentence length', average_sent_len)
+    print('# of Sentences', len(all_sentences))
     # return longest_sentence, average_sent_len
 
 def convert_json_to_text(file):
@@ -366,6 +380,7 @@ def convert_json_to_text(file):
         a.close()
         b.close()
 
+#remove brackets containing the tags and labels of the multi-labelled dataset version
 def remove_bracket_tags(file, dest):
     file_name = os.path.basename(file)
     k = []
@@ -399,20 +414,20 @@ if __name__ == '__main__':
     parser.add_argument('--tokenizer', default='spacy', type=str, help='spacy or stanford for tokenization')
     parser.add_argument("--function", action='store_true', help="e.g create training, validation and test data")
     parser.add_argument("--function_name", type=str, help="e.g count_sentence_length or create_train_dev_test")
-    parser.add_argument("--split_percentage", type=str, help="[80, 10], 60% train, 10% test 100-(80+10) dev")
+    parser.add_argument("--split_percentage", type=str, default="[80, 10]", help="[80, 10], 80% train, 10% test 100-(80+10) dev")
     parser.add_argument("--vocab", type=str, help="vocabularly source")
     parser.add_argument("--token_vocab", type=str, help="vocabularly source")
     parser.add_argument("--method", type=str, default=None, help="LSAN")
-    parser.add_argument("--normalize_toke_tags", action="store_true", help="Convert all 'X' to outcome in B-X and I-X ")
+    parser.add_argument("--normalize_token_tags", action="store_true", help="Convert all 'X' to outcome in B-X and I-X ")
 
     args = parser.parse_args()
     if args.outputdir:
         utils.create_directories_per_series_des(args.outputdir)
     if args.function:
         if args.function_name.strip() == 'create_train_dev_test':
-            file = glob('{}/*comet_nlp.txt'.format(args.data))
+            # file = glob('{}/*comet_nlp.txt'.format(args.data))
             split_percentage = ast.literal_eval(args.split_percentage)
-            create_train_dev_test(file=file[0], split_percentage=split_percentage)
+            create_train_dev_test(file=args.data, split_percentage=split_percentage)
         elif args.function_name.strip() == 'count_sentence_length':
             files = glob('{}/*.txt'.format(args.data))
             print(files)
@@ -437,16 +452,19 @@ if __name__ == '__main__':
     else:
         data = [i for i in glob('{}/*.txt'.format(args.data)) if i.__contains__('train') or i.__contains__('dev')]
         print(data)
-        all_sentences, vocab, index2word, num_words, tag_map, index2tag = create_vocabularly(data_input=data,
-                                                                                            output_dir=args.outputdir,
-                                                                                            tokenizer=args.tokenizer)
+        if not args.normalize_token_tags:
+            all_sentences, vocab, index2word, num_words, tag_map, index2tag = create_vocabularly(data_input=data,
+                                                                                                output_dir=args.outputdir,
+                                                                                                tokenizer=args.tokenizer)
 
-        document_matrix, token_label_matrix, sentence_label_matrix = pre_process(documents=all_sentences,
-                                                                                 vocab=vocab,
-                                                                                 token_label_vocab=tag_map,
-                                                                                 method=args.method,
-                                                                                 output_dir=args.outputdir)
-        if args.normalize_token_tags:
+            # _v_ =  json.load(open('multi-labelled-data/lcwan_comet_nlp/lcwan/vocab.json', 'r'))
+            # _tv_ = json.load(open('multi-labelled-data/lcwan_comet_nlp/lcwan/token_labels.json', 'r'))
+            document_matrix, token_label_matrix, sentence_label_matrix = pre_process(documents=all_sentences,
+                                                                                     vocab=vocab,
+                                                                                     token_label_vocab=tag_map,
+                                                                                     method=args.method,
+                                                                                     output_dir=args.outputdir)
+        elif args.normalize_token_tags:
             document_matrix, token_label_matrix = pre_process_(data=data,
                                                              vocab=args.vocab,
                                                              token_label_vocab=args.token_vocab,
