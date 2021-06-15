@@ -1,0 +1,31 @@
+Inhaled O
+treprostinil O
+was O
+discontinued O
+in O
+4 O
+patients O
+because O
+of O
+symptoms O
+including O
+cough B-outcome ['Physiological-Clinical']
+and O
+bronchospasm B-outcome ['Physiological-Clinical']
+( O
+n O
+= O
+3 O
+) O
+and O
+progression O
+of O
+PAH O
+( O
+n O
+= O
+1 O
+) O
+. O
+['Physiological-Clinical', 'Physiological-Clinical']
+
