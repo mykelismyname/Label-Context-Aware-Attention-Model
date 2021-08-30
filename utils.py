@@ -7,6 +7,10 @@ import ast
 import numpy as np
 from glob import glob
 import argparse
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from tabulate import tabulate
 
 st_nlp = stanza.Pipeline('en', processors='tokenize,pos', use_gpu=True, pos_batch_size=3000)
 sp_nlp = spacy.load('en_core_web_sm')
@@ -17,6 +21,7 @@ def create_directories_per_series_des(name=''):
         os.makedirs(_dir)
     return _dir
 
+#create text file to pass to glove for glove embeddings generation
 def create_dataset_to_encode(datafiles, tokenizer, output_dir):
     with open(os.path.join(output_dir, 'ebm_comet_train_dev'), 'w') as t:
         for file in datafiles:
@@ -41,6 +46,7 @@ def create_dataset_to_encode(datafiles, tokenizer, output_dir):
                         sentence.append(line_.strip())
         t.close()
 
+#chose which tokenizer to use for pre-processing
 def tokenize(sent, tokenizer):
     k = []
     if tokenizer.lower() == 'stanford':
@@ -159,8 +165,8 @@ def algin_vocab_embeddings(vocab_file, embs_file, dest=None):
                     h.write('\n')
                     break
         f.close()
-    # os.remove(embs_file)
-    # os.rename(dummy_file, dest + '/' + embs_file_name)
+    os.remove(embs_file)
+    os.rename(dummy_file, dest + '/' + embs_file_name)
 
 def count(embs_file, json_file):
     with open(embs_file, 'r') as g, open(json_file, 'r') as p:
@@ -176,14 +182,15 @@ def count(embs_file, json_file):
                 print(i, line[0], len(line[1:]))
         print(len(l))
         h = [i for i in o if i not in l]
-        print(h)
+        # print(h)
         # m = [i for i in l if i not in o]
         # print(m)
         g.close()
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data', type=str, default='multi-label-module/multi-labelled-data/', required=True, help='data source')
+    parser.add_argument('--data', type=str, default='multi-labelled-data', required=True, help='data source')
     parser.add_argument("--function_name", type=str, help="function to execute")
     parser.add_argument("--source_vocab", type=str, default='multi-labelled-data/lwan_normalize/token_labels.json', help="e.g count_sentence_length or create_train_dev_test")
     parser.add_argument('--dest', type=str, help='directory to hold output files')
@@ -201,4 +208,6 @@ if __name__ == '__main__':
     elif args.function_name == 'align_vocab_embeddings':
         algin_vocab_embeddings(args.source_vocab, args.data, dest=args.dest)
     elif args.function_name == 'count':
-        count('multi-labelled-data/lwan/word_embed.txt', 'multi-labelled-data/lwan_normalize/vocab.json')
+        count(args.data, args.source_vocab)
+    elif args.function_name == 'plot':
+        plot()
