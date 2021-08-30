@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from flair.data import Corpus, Sentence
 from flair.embeddings import TransformerDocumentEmbeddings, TransformerWordEmbeddings
 
+
 class BasicModule(torch.nn.Module):
     def __init__(self):
         super(BasicModule, self).__init__()
