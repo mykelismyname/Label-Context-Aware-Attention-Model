@@ -25,12 +25,12 @@ LCAM simulataneously extracts outcomes (Outcome span detection (OSD)) and classi
  > </table> -->
 
 ## Data
-Download data from [here](https://drive.google.com/file/d/1guaLgX3p1AKC4Y0UzABhJyIOJK99E8FE/view?usp=sharing)
+Download processed versions of datasets EBM-COMET and EBM-NLP from [here](https://drive.google.com/file/d/1J5PXFVk48uzcrNnrS7mufEdJppCQaisN/view?usp=sharing)
 
 **Label document alignment (L-D-A)**
 
 Part of this work is introducing a re-usable unsupervised text-alignment approach that extracts parallel annotations from comparable datasets.
-LDA implementation [here](https://github.com/MichealAbaho/Label-document-Alignment)
+LDA implementation [here](https://drive.google.com/file/d/1J5PXFVk48uzcrNnrS7mufEdJppCQaisN/view?usp=sharing). We leverage L-D-A to merge the two datasets above and evaluate LCAM on EBM-COMET+EBM-NLP. Preprocessed version of this dataset is downloadable [here](https://github.com/MichealAbaho/Label-document-Alignment).
 
 ## Train
 Using **BiLSTM** as a Text encoder
