@@ -107,6 +107,7 @@ class data_load:
             file.close()
             js.close()
 
+
     '''
         Extract EBM-nlp multi-label annotations and convert them to the actual outcome domains from outcome taxonomy
     '''
