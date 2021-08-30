@@ -181,9 +181,8 @@ class LabelSentenceAttention(BasicModule):
         weight2 = 1 - weight1
 
         doc = weight1 * label_att + weight2 * self_att
-       # print('Final representation', doc.shape)
-        # there two method, for simple, just add
-        # also can use linear to do it
+        # print('Final representation', doc.shape)
+        # there two method, for simple, just add also can use linear to do it
         avg_sentence_embeddings = torch.sum(doc, 1) / self.sent_classes
         pred = torch.sigmoid(self.output_layer(avg_sentence_embeddings))
         #print(pred.shape)
