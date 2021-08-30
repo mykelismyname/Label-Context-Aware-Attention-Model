@@ -35,13 +35,13 @@ LDA implementation [here](https://drive.google.com/file/d/1J5PXFVk48uzcrNnrS7muf
 ## Train
 Using **BiLSTM** as a Text encoder
 ```
-python train.py --data multi-labelled-data/lcwan_comet/lcwan --vocabularly multi-labelled-data/lcwan_vocabularly/ --abs_encoder --attention
+python train.py --data multi-labelled-data/ebm_comet/lcam --vocabularly multi-labelled-data/lcam_vocabularly/ --abs_encoder --attention
 (--attention for the attention layers and --abs_encoder for incoproating abstract representation)
 ```
 
 Using **BioBERT** as a Text encoder
 ```
-python train_transformer.py --data multi-labelled-data/lcwan_comet/lcwan --vocabularly multi-labelled-data/lcwan_vocabularly/ --transformer ../pretrained_transformer_models/biobert/ --layer -1
+python train_transformer.py --data multi-labelled-data/ebm_comet/lcam --vocabularly multi-labelled-data/lcam_vocabularly/ --transformer ../pretrained_transformer_models/biobert/ --layer -1
 ```
 
 ## Citation
