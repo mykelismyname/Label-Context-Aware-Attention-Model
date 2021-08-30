@@ -30,7 +30,7 @@ Download processed versions of datasets EBM-COMET and EBM-NLP from [here](https:
 **Label document alignment (L-D-A)**
 
 Part of this work is introducing a re-usable unsupervised text-alignment approach that extracts parallel annotations from comparable datasets.
-LDA implementation [here](https://drive.google.com/file/d/1J5PXFVk48uzcrNnrS7mufEdJppCQaisN/view?usp=sharing). We leverage L-D-A to merge the two datasets above and evaluate LCAM on EBM-COMET+EBM-NLP. Preprocessed version of this dataset is downloadable [here](https://github.com/MichealAbaho/Label-document-Alignment).
+LDA implementation [here](https://drive.google.com/file/d/1J5PXFVk48uzcrNnrS7mufEdJppCQaisN/view?usp=sharing). We leverage L-D-A to merge the two datasets above and evaluate LCAM on EBM-COMET+EBM-NLP. Preprocessed version of this dataset is downloadable [here](https://drive.google.com/file/d/1JA7-2yl0UA4t2KkFEAfY5QMqoe62gi-Q/view?usp=sharing).
 
 ## Train
 Using **BiLSTM** as a Text encoder
