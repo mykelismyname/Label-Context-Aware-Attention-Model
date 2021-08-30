@@ -12,7 +12,7 @@ import ast
 import pandas as pd
 import argparse
 import json
-import utils as utils
+# import utils as utils
 import stanza
 from glob import glob
 from gensim.models import Word2Vec
@@ -180,7 +180,7 @@ def re_split_sentences(s, tokenizer):
         raise ValueError('Something is wrong')
     return toks_split, tags_split
 
-#preparing data for LWAN normalizing the tags as B-outcome and I-outcome
+#preparing data for LCAM normalizing the tags as B-outcome and I-outcome
 def pre_process_(data, vocab, token_label_vocab, output_dir, method=None, pad_value=500):
     with open(output_dir + '/dataset_stats', 'w') as ds:
         for file in data:
@@ -280,7 +280,7 @@ def pre_process(documents, vocab, token_label_vocab, output_dir, method=None, pa
     return document_matrix, token_label_matrix, sentence_label_matrix
 
 #solitting entire dataset into train, dev and test sets
-def create_train_dev_test(file, split_percentage):
+def create_train_dev_test(file, split_percentage, shuffle=False):
     def write_to_file(file, sents):
         with open(file, 'w') as w:
             for sent_list in sents:
@@ -302,7 +302,8 @@ def create_train_dev_test(file, split_percentage):
                 sentence.append(line)
         f.close()
     print('dataset length', len(sentences))
-    np.random.shuffle(sentences)
+    if shuffle:
+        np.random.shuffle(sentences)
 
     if len(split_percentage) == 2:
         dataset_lengh = len(sentences)
@@ -315,12 +316,12 @@ def create_train_dev_test(file, split_percentage):
                 print('len of train sents', len(train_sents))
             elif i == 1:
                 test_sents = sentences[train_length:(train_length+test_length)]
-                write_to_file(file=file_path + '/test.txt', sents=test_sents)
-                print('len of test sents',len(test_sents))
+                write_to_file(file=file_path + '/dev.txt', sents=test_sents)
+                print('len of dev sents',len(test_sents))
             else:
                 dev_sents = sentences[(train_length+test_length):]
-                write_to_file(file=file_path + '/dev.txt', sents=dev_sents)
-                print('len of dev sents',len(dev_sents))
+                write_to_file(file=file_path + '/test.txt', sents=dev_sents)
+                print('len of test sents',len(dev_sents))
     else:
         raise ValueError('You might want to pass a list with both train and test percentages, not dev percentage = 100 -(train+test)')
 
@@ -348,26 +349,79 @@ def createOneHotVector(vocab):
         vocab_[i] = one_hot_vocab[j][j]
     return one_hot_vocab
 
-def count_sentence_length(files):
-    all_sentences = []
-    for i in files:
-        a = open(i, 'r')
-        sentence = []
-        for t in a.readlines():
-            t = t.strip()
-            if t == '\n' or t == '':
-                if sentence:
-                    all_sentences.append([i for i in sentence])
-                sentence.clear()
-            else:
-                t.split()
-                sentence.append(t[0])
-        a.close()
-    longest_sentence = max([len(i) for i in all_sentences])
-    average_sent_len = np.mean([len(i) for i in all_sentences])
-    print('Longest sentence length', longest_sentence)
-    print('Average sentence length', average_sent_len)
-    print('# of Sentences', len(all_sentences))
+def count_sentence_length(files_loc, multi_labels_count=False):
+    all_sentences, all_labels = [], []
+    if not multi_labels_count:
+        files = glob('{}/*.txt'.format(files_loc))
+        print(files)
+        u = []
+        for j,i in enumerate(files):
+            print(j,i)
+            a = open(i, 'r')
+            sentence = []
+            for t in a.readlines():
+                t = t.strip()
+                if t == '\n' or t == '':
+                    if sentence:
+                        # sentence = sentence[:-1]
+                        all_sentences.append([i for i in sentence])
+                    sentence.clear()
+                else:
+                    if (t.startswith("[['") and t.endswith("']]")) or (t.startswith("['") and t.endswith("']")) or re.search('\[\]', t):
+                        sentence.append(t)
+                    else:
+                        t = t.split()
+                        sentence.append(t[0])
+            a.close()
+            if j == 0:
+                file_sentences = all_sentences
+                u.append(len(all_sentences))
+            elif j > 0:
+                file_sentences = all_sentences[u[-1]:]
+                u.append(len(all_sentences))
+
+            if file_sentences:
+                x = [ast.literal_eval(i[-1]) for i in file_sentences]
+                _x_ = [len(i) for i in x]
+                y = [i for i in x if len(i) > 0]
+                longest_sentence = max([len(i) for i in file_sentences])
+                # average_sent_len = np.mean([len(i) for i in all_sentences])
+                d = [len(i) for i in file_sentences]
+                average_sent_len = float(sum(d) / len(d))
+                print('# of words in dataset', sum(d))
+                print('# of tokens in longest sentence', longest_sentence)
+                print('Average sentence length', average_sent_len)
+                print('Average number of outcome phrases per document', float(sum(_x_)/len(_x_)))
+                print('# of documents with outcome phrases', len(y))
+                print('# of Sentences', len(file_sentences))
+                print('\n')
+
+        longest_sentence = max([len(i) for i in all_sentences])
+        # average_sent_len = np.mean([len(i) for i in all_sentences])
+        d = [len(i) for i in all_sentences]
+        average_sent_len = float(sum(d)/len(d))
+        print('\nEntire dataset')
+        print('Number of words in dataset', sum(d))
+        print('Longest sentence length', longest_sentence)
+        print('Average sentence length', average_sent_len)
+        print('# of Sentences', len(all_sentences))
+    else:
+        files = glob('{}/Y*.npy'.format(files_loc))
+        sentences_with_multi_labels = 0
+        print(files)
+        for f in files:
+            s = 0
+            _f_ = np.load(f)
+            print(f, _f_.shape)
+            for k in _f_:
+                mlc = [i for i in k if int(i) == 1]
+                if len(mlc) > 1:
+                    s += 1
+            print(s)
+            sentences_with_multi_labels += s
+        print(sentences_with_multi_labels)
+
+
     # return longest_sentence, average_sent_len
 
 def convert_json_to_text(file):
@@ -393,18 +447,36 @@ def remove_bracket_tags(file, dest):
                 d.write('\n')
             else:
                 line_split = line.strip().split(' ', 2)
-                k.append(line_split[1])
                 if len(line_split) == 2:
                     d.write('{}'.format(line))
                 else:
                     line_3 = line_split[2]
                     line_3 = ast.literal_eval(line_3)
                     line_3_split = list(set(line_3))
-                    # print(line_3_split)
+                    k.append(line_3_split)
                     d.write('{} {}-{}\n'.format(line_split[0], line_split[1].split('-')[0], line_3_split[-1]))
         f.close()
         d.close()
-    print(list(set(k)))
+    print(set([i for j in k for i in j]))
+
+#creating an empty directory
+def create_directories_per_series_des(name=''):
+    _dir = os.path.abspath(os.path.join(os.path.curdir, name))
+    if not os.path.exists(_dir):
+        os.makedirs(_dir)
+    return _dir
+
+
+def dataset(files_loc):
+    files = glob('{}/*.txt'.format(files_loc))
+    for f in files:
+        with open(f, 'r') as f_content:
+            sentence = []
+            for i in f_content.readlines():
+                i = i.strip()
+                if i != '\n':
+                    pass
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -418,20 +490,19 @@ if __name__ == '__main__':
     parser.add_argument("--vocab", type=str, help="vocabularly source")
     parser.add_argument("--token_vocab", type=str, help="vocabularly source")
     parser.add_argument("--method", type=str, default=None, help="LSAN")
+    parser.add_argument("--multi_labels_count", action="store_true", help="Count the number of outcomes with multi-labels")
     parser.add_argument("--normalize_token_tags", action="store_true", help="Convert all 'X' to outcome in B-X and I-X ")
 
     args = parser.parse_args()
     if args.outputdir:
-        utils.create_directories_per_series_des(args.outputdir)
+        create_directories_per_series_des(args.outputdir)
     if args.function:
         if args.function_name.strip() == 'create_train_dev_test':
             # file = glob('{}/*comet_nlp.txt'.format(args.data))
             split_percentage = ast.literal_eval(args.split_percentage)
             create_train_dev_test(file=args.data, split_percentage=split_percentage)
         elif args.function_name.strip() == 'count_sentence_length':
-            files = glob('{}/*.txt'.format(args.data))
-            print(files)
-            count_sentence_length(files)
+            count_sentence_length(files_loc=args.data, multi_labels_count=args.multi_labels_count)
         elif args.function_name.strip() == 'convert_json_to_text':
             convert_json_to_text(args.data)
         elif args.function_name.strip() == 'remove_bracket_tags':
@@ -439,11 +510,11 @@ if __name__ == '__main__':
         elif args.function_name.strip() == 'transformer_data_preparation':
             X = np.load("{}/X_{}.npy".format(args.data, args.dataset))
             Y = np.load("{}/X_label_{}.npy".format(args.data, args.dataset))
-            vocab = json.load(open('{}/vocab.json'.format(args.data), 'r'))
-            token_tag_map = json.load(open('{}/token_labels.json'.format(args.data), 'r'))
+            vocab = json.load(open('{}/vocab.json'.format(args.vocab), 'r'))
+            token_tag_map = json.load(open('{}/token_labels.json'.format(args.vocab), 'r'))
             index2word = dict([(v,k) for k,v in vocab.items()])
             index2tag = dict([(v, k) for k, v in token_tag_map.items()])
-            with open('{}/{}.txt'.format(args.data, args.dataset), 'w') as d:
+            with open('{}/{}.bak'.format(args.data, args.dataset), 'w') as d:
                 for ins,tags in zip(X,Y):
                     for tok,tag in zip(ins,tags):
                         if index2word[tok] != '<pad>':
