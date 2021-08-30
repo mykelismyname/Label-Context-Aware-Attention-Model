@@ -6,8 +6,9 @@ can be found in this [paper](https://arxiv.org/pdf/2104.07789.pdf).
 <img src='img/LCAM-architecture.png'>
 
 LCAM simulataneously extracts outcomes (Outcome span detection (OSD)) and classifies them (Outcome Classification (OC)) given an input sentence, e.g.
-> There was no significance between group differences in the incidence of wheezing or shortness of breath
-> Wheezing :- Physiological, Shortness of breath :- Physiological
+> There was no significance between group differences in the incidence of **wheezing** or **shortness of breath**
+> 
+> OSD detects abd extracts the outcomes ''Wheezing'' and ''shortness of breath'', and OC classifies them as ''Physiological outcomes''.
 
 <!-- > <table>
   <tr>
